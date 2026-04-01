@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ session.title }}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<header>
+    <h1>{{ session.title }}</h1>
+    <p><a href="/">Back to Home</a></p>
+</header>
+
+<div class="grid">
+    <article>
+        <header>
+            <h3>Session Link</h3>
+        </header>
+        <p>Share this link with participants:</p>
+        <code id="session-url">{{ base_url }}/session/{{ session.id }}</code>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('session-url').textContent)" class="secondary outline">Copy Link</button>
+
+        <h4>QR Code</h4>
+        <img src="/admin/session/{{ session.id }}/qr" alt="QR Code" style="max-width: 200px;">
+    </article>
+
+    <article>
+        <header>
+            <h3>Add Question</h3>
+        </header>
+        <form method="post" action="/admin/session/{{ session.id }}/questions">
+            <label for="title">Question</label>
+            <input type="text" id="title" name="title" placeholder="Enter your question" required>
+
+            <label for="question_type">Type</label>
+            <select id="question_type" name="question_type" onchange="toggleOptions()">
+                {% for qtype in question_types %}
+                <option value="{{ qtype }}">{{ qtype.replace('_', ' ').title() }}</option>
+                {% endfor %}
+            </select>
+
+            <div id="options-container" style="display: none;">
+                <label for="options">Options (one per line)</label>
+                <textarea id="options" name="options" rows="4" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+            </div>
+
+            <button type="submit">Add Question</button>
+        </form>
+    </article>
+</div>
+
+<section>
+    <h2>Questions</h2>
+    {% if questions %}
+    <div class="questions-list">
+        {% for question in questions %}
+        <article class="question-card {% if question.is_active %}active-question{% endif %}">
+            <header>
+                <div class="question-header">
+                    <span class="question-type">{{ question.type.value.replace('_', ' ').title() }}</span>
+                    {% if question.is_active %}
+                    <mark>Active</mark>
+                    {% endif %}
+                </div>
+                <h4>{{ question.title }}</h4>
+            </header>
+
+            {% if question.type.value == 'multiple_choice' and question.options_list %}
+            <ul>
+                {% for opt in question.options_list %}
+                <li>{{ opt }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <div id="results-{{ question.id }}" class="results-container"></div>
+
+            <footer>
+                <div class="button-group">
+                    {% if not question.is_active %}
+                    <form method="post" action="/admin/session/{{ session.id }}/questions/{{ question.id }}/activate" style="display: inline;">
+                        <button type="submit" class="secondary">Activate</button>
+                    </form>
+                    {% endif %}
+                    <button onclick="loadResults('{{ question.id }}')" class="outline">Refresh Results</button>
+                    <form method="post" action="/admin/session/{{ session.id }}/questions/{{ question.id }}/delete" style="display: inline;">
+                        <button type="submit" class="secondary outline" onclick="return confirm('Delete this question?')">Delete</button>
+                    </form>
+                </div>
+            </footer>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p>No questions yet. Add one above!</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+<script>
+function toggleOptions() {
+    const type = document.getElementById('question_type').value;
+    const container = document.getElementById('options-container');
+    container.style.display = type === 'multiple_choice' ? 'block' : 'none';
+}
+
+async function loadResults(questionId) {
+    try {
+        const response = await fetch(`/admin/session/{{ session.id }}/results/${questionId}`);
+        const data = await response.json();
+        displayResults(questionId, data);
+    } catch (error) {
+        console.error('Failed to load results:', error);
+    }
+}
+
+function displayResults(questionId, data) {
+    const container = document.getElementById(`results-${questionId}`);
+    if (!container) return;
+
+    if (data.type === 'multiple_choice') {
+        let html = '<h5>Results (' + data.total + ' responses)</h5><div class="bar-chart">';
+        for (const [option, count] of Object.entries(data.counts)) {
+            const percent = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
+            html += `<div class="bar-item">
+                <span class="bar-label">${option}</span>
+                <div class="bar-track"><div class="bar-fill" style="width: ${percent}%"></div></div>
+                <span class="bar-value">${count} (${percent}%)</span>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    } else if (data.type === 'wordcloud') {
+        container.innerHTML = '<h5>Word Cloud (' + data.responses.length + ' responses)</h5><canvas id="wordcloud-' + questionId + '" width="400" height="300"></canvas>';
+        const words = {};
+        data.responses.forEach(r => {
+            const word = r.value.toLowerCase().trim();
+            words[word] = (words[word] || 0) + 1;
+        });
+        const wordList = Object.entries(words).map(([text, size]) => [text, size * 20]);
+        if (wordList.length > 0) {
+            WordCloud(document.getElementById('wordcloud-' + questionId), { list: wordList });
+        }
+    } else {
+        let html = '<h5>Responses (' + data.responses.length + ')</h5><ul class="response-list">';
+        data.responses.forEach(r => {
+            html += `<li>${r.value}</li>`;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+    }
+}
+
+// Load results for all questions on page load
+document.addEventListener('DOMContentLoaded', function() {
+    {% for question in questions %}
+    loadResults('{{ question.id }}');
+    {% endfor %}
+});
+</script>
+{% endblock %}

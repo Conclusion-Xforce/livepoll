@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Create Session - LivePoll{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Create New Session</h1>
+    <p><a href="/">Back to Home</a></p>
+</header>
+
+<article>
+    <form method="post" action="/admin/create">
+        <label for="title">Session Title</label>
+        <input type="text" id="title" name="title" placeholder="My Presentation Q&A" required>
+
+        <label for="admin_password">Admin Password</label>
+        <input type="password" id="admin_password" name="admin_password" placeholder="Password to manage this session" required>
+        <small>You'll need this password to manage questions and view results.</small>
+
+        <button type="submit">Create Session</button>
+    </form>
+</article>
+{% endblock %}

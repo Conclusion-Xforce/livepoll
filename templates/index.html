@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}LivePoll - Live Audience Polling{% endblock %}
+
+{% block content %}
+<header>
+    <h1>LivePoll</h1>
+    <p>Simple live audience polling for presentations</p>
+</header>
+
+<section>
+    <div class="grid">
+        <article>
+            <header>
+                <h2>Create a Poll Session</h2>
+            </header>
+            <p>Start a new polling session with word clouds, multiple choice, and free text questions.</p>
+            <footer>
+                <a href="/admin/create" role="button">Create Session</a>
+            </footer>
+        </article>
+        <article>
+            <header>
+                <h2>Join a Session</h2>
+            </header>
+            <p>Have a session code? Enter it below to participate.</p>
+            <form action="/join" method="get" onsubmit="window.location.href='/session/' + document.getElementById('code').value; return false;">
+                <input type="text" id="code" placeholder="Enter session code" required>
+                <button type="submit">Join</button>
+            </form>
+        </article>
+    </div>
+</section>
+
+<section>
+    <h3>Features</h3>
+    <div class="grid">
+        <div>
+            <h4>Word Clouds</h4>
+            <p>Collect words from your audience and display them in a beautiful word cloud.</p>
+        </div>
+        <div>
+            <h4>Multiple Choice</h4>
+            <p>Create polls with predefined options and see results in real-time.</p>
+        </div>
+        <div>
+            <h4>Free Text</h4>
+            <p>Gather open-ended responses from your audience.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

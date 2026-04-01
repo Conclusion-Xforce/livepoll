@@ -1,0 +1,16 @@
+services:
+  livepoll:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - HOSTNAME=${HOSTNAME:-localhost}
+      - PORT=8000
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=sqlite+aiosqlite:///data/livepoll.db
+    volumes:
+      - livepoll_data:/data
+    restart: unless-stopped
+
+volumes:
+  livepoll_data:

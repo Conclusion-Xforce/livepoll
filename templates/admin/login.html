@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login - {{ session.title }}{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Admin Login</h1>
+    <p>Session: {{ session.title }}</p>
+</header>
+
+<article>
+    <form method="post" action="/admin/session/{{ session.id }}/login">
+        <label for="password">Admin Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter admin password" required>
+
+        <button type="submit">Login</button>
+    </form>
+</article>
+{% endblock %}

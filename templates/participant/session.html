@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}{{ session.title }} - LivePoll{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<header>
+    <h1>{{ session.title }}</h1>
+</header>
+
+<div id="waiting" {% if question %}style="display: none;"{% endif %}>
+    <article>
+        <p>Waiting for the presenter to activate a question...</p>
+        <progress></progress>
+    </article>
+</div>
+
+<div id="question-container" {% if not question %}style="display: none;"{% endif %}>
+    <article id="question-card">
+        <header>
+            <h2 id="question-title">{% if question %}{{ question.title }}{% endif %}</h2>
+        </header>
+
+        <div id="input-area">
+            {% if question %}
+                {% if question.type.value == 'multiple_choice' %}
+                <div id="options-area" class="options-grid">
+                    {% for opt in options %}
+                    <button class="option-btn" onclick="submitResponse('{{ opt }}')">{{ opt }}</button>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <form id="text-form" onsubmit="submitTextResponse(event)">
+                    <input type="text" id="response-input" placeholder="{% if question.type.value == 'wordcloud' %}Enter a word{% else %}Enter your response{% endif %}" required>
+                    <button type="submit">Submit</button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <div id="submitted-message" style="display: none;">
+            <p>Response submitted!</p>
+            <button onclick="allowNewResponse()">Submit Another</button>
+        </div>
+    </article>
+
+    <article id="results-card">
+        <header>
+            <h3>Live Results</h3>
+        </header>
+        <div id="results-area"></div>
+    </article>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/participant.js"></script>
+<script>
+const sessionId = '{{ session.id }}';
+const wsUrl = `ws://${window.location.host}/ws/session/${sessionId}`;
+let ws;
+let currentQuestionId = {% if question %}'{{ question.id }}'{% else %}null{% endif %};
+let currentQuestionType = {% if question %}'{{ question.type.value }}'{% else %}null{% endif %};
+
+function connectWebSocket() {
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = function() {
+        console.log('Connected to session');
+    };
+
+    ws.onmessage = function(event) {
+        const message = JSON.parse(event.data);
+        handleMessage(message);
+    };
+
+    ws.onclose = function() {
+        console.log('Disconnected, reconnecting...');
+        setTimeout(connectWebSocket, 2000);
+    };
+}
+
+function handleMessage(message) {
+    if (message.type === 'question') {
+        showQuestion(message.data);
+    } else if (message.type === 'results') {
+        updateResults(message.data);
+    }
+}
+
+function showQuestion(data) {
+    currentQuestionId = data.id;
+    currentQuestionType = data.type;
+
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('question-container').style.display = 'block';
+    document.getElementById('question-title').textContent = data.title;
+    document.getElementById('submitted-message').style.display = 'none';
+    document.getElementById('input-area').style.display = 'block';
+
+    const inputArea = document.getElementById('input-area');
+
+    if (data.type === 'multiple_choice') {
+        let html = '<div class="options-grid">';
+        data.options.forEach(opt => {
+            html += `<button class="option-btn" onclick="submitResponse('${opt}')">${opt}</button>`;
+        });
+        html += '</div>';
+        inputArea.innerHTML = html;
+    } else {
+        const placeholder = data.type === 'wordcloud' ? 'Enter a word' : 'Enter your response';
+        inputArea.innerHTML = `
+            <form id="text-form" onsubmit="submitTextResponse(event)">
+                <input type="text" id="response-input" placeholder="${placeholder}" required>
+                <button type="submit">Submit</button>
+            </form>
+        `;
+    }
+
+    document.getElementById('results-area').innerHTML = '';
+}
+
+function submitResponse(value) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+        type: 'response',
+        data: {
+            question_id: currentQuestionId,
+            value: value
+        }
+    }));
+
+    document.getElementById('input-area').style.display = 'none';
+    document.getElementById('submitted-message').style.display = 'block';
+}
+
+function submitTextResponse(event) {
+    event.preventDefault();
+    const input = document.getElementById('response-input');
+    if (input && input.value.trim()) {
+        submitResponse(input.value.trim());
+        input.value = '';
+    }
+}
+
+function allowNewResponse() {
+    document.getElementById('input-area').style.display = 'block';
+    document.getElementById('submitted-message').style.display = 'none';
+}
+
+function updateResults(data) {
+    const container = document.getElementById('results-area');
+    if (!container || data.question_id !== currentQuestionId) return;
+
+    if (currentQuestionType === 'multiple_choice') {
+        let html = '<div class="bar-chart">';
+        for (const [option, count] of Object.entries(data.counts)) {
+            const percent = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
+            html += `<div class="bar-item">
+                <span class="bar-label">${option}</span>
+                <div class="bar-track"><div class="bar-fill" style="width: ${percent}%"></div></div>
+                <span class="bar-value">${count} (${percent}%)</span>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    } else if (currentQuestionType === 'wordcloud') {
+        container.innerHTML = '<canvas id="wordcloud-canvas" width="400" height="300"></canvas>';
+        const words = {};
+        data.responses.forEach(r => {
+            const word = r.value.toLowerCase().trim();
+            words[word] = (words[word] || 0) + 1;
+        });
+        const wordList = Object.entries(words).map(([text, size]) => [text, size * 20]);
+        if (wordList.length > 0) {
+            WordCloud(document.getElementById('wordcloud-canvas'), { list: wordList });
+        }
+    } else {
+        let html = '<ul class="response-list">';
+        data.responses.slice(-20).forEach(r => {
+            html += `<li>${r.value}</li>`;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+    }
+}
+
+connectWebSocket();
+</script>
+{% endblock %}
