@@ -1,6 +1,7 @@
+import os
+
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer
-import os
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 serializer = URLSafeTimedSerializer(SECRET_KEY)
