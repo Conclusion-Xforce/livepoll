@@ -24,7 +24,7 @@
                 <h2>Join a Session</h2>
             </header>
             <p>Have a session code? Enter it below to participate.</p>
-            <form action="/join" method="get" onsubmit="window.location.href='/session/' + document.getElementById('code').value; return false;">
+            <form action="/join" method="get" onsubmit="var code = document.getElementById('code').value; window.location.href='/session/' + encodeURIComponent(code); return false;">
                 <input type="text" id="code" placeholder="Enter session code" required>
                 <button type="submit">Join</button>
             </form>
