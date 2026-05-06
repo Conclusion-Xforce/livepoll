@@ -29,7 +29,10 @@ async def db_session(db_engine):
     """Yield a fresh AsyncSession for each test, rolling back after the test."""
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with session_factory() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.rollback()
 
 
 @pytest_asyncio.fixture(scope="function")
