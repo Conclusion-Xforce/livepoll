@@ -1,20 +1,20 @@
-import os
-import json
 import io
+import json
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, Form, HTTPException, WebSocket, WebSocketDisconnect, Cookie
+
+import qrcode
+from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-import qrcode
 
+from app.auth import create_admin_token, hash_password, verify_admin_token, verify_password
 from app.database import get_db, init_db
-from app.models import Session, Question, Response, QuestionType
-from app.schemas import SessionCreate, QuestionCreate, ResponseCreate
-from app.auth import hash_password, verify_password, create_admin_token, verify_admin_token
+from app.models import Question, QuestionType, Response, Session
 from app.websocket import manager
 
 HOSTNAME = os.getenv("HOSTNAME", "localhost")
@@ -45,9 +45,7 @@ async def index(request: Request):
 
 @app.get("/session/{session_id}", response_class=HTMLResponse)
 async def participant_view(request: Request, session_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Session).where(Session.id == session_id).options(selectinload(Session.questions))
-    )
+    result = await db.execute(select(Session).where(Session.id == session_id).options(selectinload(Session.questions)))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -55,13 +53,16 @@ async def participant_view(request: Request, session_id: str, db: AsyncSession =
     active_question = next((q for q in session.questions if q.is_active), None)
     options = json.loads(active_question.options) if active_question and active_question.options else []
 
-    return templates.TemplateResponse("participant/session.html", {
-        "request": request,
-        "session": session,
-        "question": active_question,
-        "options": options,
-        "base_url": get_base_url()
-    })
+    return templates.TemplateResponse(
+        "participant/session.html",
+        {
+            "request": request,
+            "session": session,
+            "question": active_question,
+            "options": options,
+            "base_url": get_base_url(),
+        },
+    )
 
 
 # WebSocket for real-time updates
@@ -103,15 +104,14 @@ async def broadcast_results(session_id: str, question_id: str, db: AsyncSession)
         for r in question.responses:
             if r.value in counts:
                 counts[r.value] += 1
-        await manager.broadcast(session_id, {
-            "type": "results",
-            "data": {"question_id": question_id, "counts": counts, "total": len(responses)}
-        })
+        await manager.broadcast(
+            session_id,
+            {"type": "results", "data": {"question_id": question_id, "counts": counts, "total": len(responses)}},
+        )
     else:
-        await manager.broadcast(session_id, {
-            "type": "results",
-            "data": {"question_id": question_id, "responses": responses}
-        })
+        await manager.broadcast(
+            session_id, {"type": "results", "data": {"question_id": question_id, "responses": responses}}
+        )
 
 
 # Admin routes
@@ -122,15 +122,9 @@ async def admin_create_form(request: Request):
 
 @app.post("/admin/create")
 async def admin_create_session(
-    request: Request,
-    title: str = Form(...),
-    admin_password: str = Form(...),
-    db: AsyncSession = Depends(get_db)
+    request: Request, title: str = Form(...), admin_password: str = Form(...), db: AsyncSession = Depends(get_db)
 ):
-    session = Session(
-        title=title,
-        admin_password_hash=hash_password(admin_password)
-    )
+    session = Session(title=title, admin_password_hash=hash_password(admin_password))
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -148,18 +142,11 @@ async def admin_login_form(request: Request, session_id: str, db: AsyncSession =
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return templates.TemplateResponse("admin/login.html", {
-        "request": request,
-        "session": session
-    })
+    return templates.TemplateResponse("admin/login.html", {"request": request, "session": session})
 
 
 @app.post("/admin/session/{session_id}/login")
-async def admin_login(
-    session_id: str,
-    password: str = Form(...),
-    db: AsyncSession = Depends(get_db)
-):
+async def admin_login(session_id: str, password: str = Form(...), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if not session or not verify_password(password, session.admin_password_hash):
@@ -182,16 +169,11 @@ def require_admin(session_id: str, admin_token: str | None = Cookie(None)):
 
 @app.get("/admin/session/{session_id}/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(
-    request: Request,
-    session_id: str,
-    admin_token: str | None = Cookie(None),
-    db: AsyncSession = Depends(get_db)
+    request: Request, session_id: str, admin_token: str | None = Cookie(None), db: AsyncSession = Depends(get_db)
 ):
     require_admin(session_id, admin_token)
 
-    result = await db.execute(
-        select(Session).where(Session.id == session_id).options(selectinload(Session.questions))
-    )
+    result = await db.execute(select(Session).where(Session.id == session_id).options(selectinload(Session.questions)))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -200,13 +182,16 @@ async def admin_dashboard(
     for q in questions:
         q.options_list = json.loads(q.options) if q.options else []
 
-    return templates.TemplateResponse("admin/dashboard.html", {
-        "request": request,
-        "session": session,
-        "questions": questions,
-        "base_url": get_base_url(),
-        "question_types": [t.value for t in QuestionType]
-    })
+    return templates.TemplateResponse(
+        "admin/dashboard.html",
+        {
+            "request": request,
+            "session": session,
+            "questions": questions,
+            "base_url": get_base_url(),
+            "question_types": [t.value for t in QuestionType],
+        },
+    )
 
 
 @app.post("/admin/session/{session_id}/questions")
@@ -216,13 +201,11 @@ async def add_question(
     question_type: str = Form(...),
     options: str = Form(""),
     admin_token: str | None = Cookie(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     require_admin(session_id, admin_token)
 
-    result = await db.execute(
-        select(Session).where(Session.id == session_id).options(selectinload(Session.questions))
-    )
+    result = await db.execute(select(Session).where(Session.id == session_id).options(selectinload(Session.questions)))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -237,7 +220,7 @@ async def add_question(
         type=QuestionType(question_type),
         title=title,
         options=options_json,
-        display_order=max_order
+        display_order=max_order,
     )
     db.add(question)
     await db.commit()
@@ -247,17 +230,12 @@ async def add_question(
 
 @app.post("/admin/session/{session_id}/questions/{question_id}/activate")
 async def activate_question(
-    session_id: str,
-    question_id: str,
-    admin_token: str | None = Cookie(None),
-    db: AsyncSession = Depends(get_db)
+    session_id: str, question_id: str, admin_token: str | None = Cookie(None), db: AsyncSession = Depends(get_db)
 ):
     require_admin(session_id, admin_token)
 
     # Deactivate all questions in session
-    result = await db.execute(
-        select(Question).where(Question.session_id == session_id)
-    )
+    result = await db.execute(select(Question).where(Question.session_id == session_id))
     questions = result.scalars().all()
     for q in questions:
         q.is_active = q.id == question_id
@@ -271,25 +249,20 @@ async def activate_question(
 
     if question:
         options = json.loads(question.options) if question.options else []
-        await manager.broadcast(session_id, {
-            "type": "question",
-            "data": {
-                "id": question.id,
-                "title": question.title,
-                "type": question.type.value,
-                "options": options
-            }
-        })
+        await manager.broadcast(
+            session_id,
+            {
+                "type": "question",
+                "data": {"id": question.id, "title": question.title, "type": question.type.value, "options": options},
+            },
+        )
 
     return RedirectResponse(url=f"/admin/session/{session_id}/dashboard", status_code=303)
 
 
 @app.post("/admin/session/{session_id}/questions/{question_id}/delete")
 async def delete_question(
-    session_id: str,
-    question_id: str,
-    admin_token: str | None = Cookie(None),
-    db: AsyncSession = Depends(get_db)
+    session_id: str, question_id: str, admin_token: str | None = Cookie(None), db: AsyncSession = Depends(get_db)
 ):
     require_admin(session_id, admin_token)
 
@@ -319,10 +292,7 @@ async def get_qr_code(session_id: str):
 
 @app.get("/admin/session/{session_id}/results/{question_id}")
 async def get_question_results(
-    session_id: str,
-    question_id: str,
-    admin_token: str | None = Cookie(None),
-    db: AsyncSession = Depends(get_db)
+    session_id: str, question_id: str, admin_token: str | None = Cookie(None), db: AsyncSession = Depends(get_db)
 ):
     require_admin(session_id, admin_token)
 
@@ -348,4 +318,5 @@ async def get_question_results(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=int(PORT))

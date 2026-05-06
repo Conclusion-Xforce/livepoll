@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./livepoll.db")
