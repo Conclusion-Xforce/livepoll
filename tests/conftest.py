@@ -1,5 +1,7 @@
 """Shared pytest fixtures for LivePoll tests."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -46,12 +48,14 @@ async def async_client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-        follow_redirects=False,
-    ) as client:
-        yield client
+    # Patch init_db so the app lifespan runs without touching any real DB file.
+    with patch("app.main.init_db", new_callable=AsyncMock):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as client:
+            yield client
     app.dependency_overrides.clear()
 
 
